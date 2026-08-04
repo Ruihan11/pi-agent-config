@@ -1,0 +1,28 @@
+# This repository lives in Pi's runtime configuration directory.
+# Ignore everything by default, then explicitly allow reproducible configuration.
+/*
+
+# Repository metadata and documentation
+!/.gitignore
+!/.gitmodules
+!/README.md
+!/AGENTS.md
+
+# Declarative Pi configuration
+!/settings.json
+!/models.example.json
+!/keybindings.json
+
+# Versioned Pi resources
+!/skills/
+!/skills/**
+!/extensions/
+!/extensions/**
+!/prompts/
+!/prompts/**
+!/themes/
+!/themes/**
+
+# Runtime state, machine-local provider routing, and credentials remain ignored by the
+# deny-by-default rule above. This includes models.json, auth.json, sessions/,
+# models-store.json, trust.json, bin/, git/, and npm/.
