@@ -1,62 +1,68 @@
 ---
 name: save-for-the-week
-description: "Merge the daily logs in ~/.claude/log/ over a date range into one themed weekly summary, printed to the terminal. Always confirms the start and end date with the user first. Use when the user wants a weekly recap, to summarize the week, or to roll several daily logs into one. Triggers on save-for-the-week, weekly log, weekly summary, 周报, 本周记录, 汇总本周, 合并日报, 这周做了什么."
+description: "Merge daily logs from the Pi agent log directory (${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/log) over a date range into one themed weekly summary returned in the assistant response. Confirm the range unless skill arguments already specify it. Use for weekly recaps, 周报, 本周记录, 汇总本周, 合并日报, or 这周做了什么."
 ---
 
 # save-for-the-week
 
-把一段日期范围内的日报归并成一份周报，**直接打印到终端**。
+把指定日期范围内的 Pi 日报归并为一份周报，并在最终回复中返回 Markdown。
 
 ## 参数
 
-- `LOG_DIR`：日报目录，默认 `~/.claude/log/`。args 给了别的路径就用它。
-- args 里若已明确日期范围（如 `26-07-13 ~ 26-07-19`、`上周`），跳过第 1 步直接用。
+- `LOG_DIR`：默认 `${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/log/`。如果 skill arguments 提供 `LOG_DIR=<path>` 或明确指定其他目录，则使用用户给出的目录。
+- 如果 arguments 已明确日期范围（如 `26-07-13 ~ 26-07-19`、`上周`），直接使用该范围，不再询问。
 
-## 1. 先聊日期范围（必须）
+## 1. 确认日期范围
 
-除非 args 已明确给出，**先问用户，不要自己定**。
-
-先取事实，不要凭记忆推断日期：
+没有明确范围时，先取得事实，不要凭记忆推断日期。使用 `bash` 执行；如果用户指定了目录，替换第一行的默认值：
 
 ```bash
-date +%y-%m-%d                                      # 今天
-date +%u                                            # 1=周一 .. 7=周日
-date -d "-$(( $(date +%u) - 1 )) days" +%y-%m-%d    # 本周一
-date -d "+$(( 7 - $(date +%u) )) days" +%y-%m-%d    # 本周日
-ls <LOG_DIR>/*.md                                   # 实际存在哪些日报
+LOG_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/log"
+TODAY="$(date +%y-%m-%d)"
+WEEKDAY="$(date +%u)"
+MONDAY="$(date -d "-$((WEEKDAY - 1)) days" +%y-%m-%d)"
+SUNDAY="$(date -d "+$((7 - WEEKDAY)) days" +%y-%m-%d)"
+printf 'today=%s monday=%s sunday=%s\n' "$TODAY" "$MONDAY" "$SUNDAY"
+if [ -d "$LOG_DIR" ]; then
+  find "$LOG_DIR" -maxdepth 1 -type f -name '*.md' -printf '%f\n' | sort
+fi
 ```
 
-再用 AskUserQuestion 给选项。选项必须基于**实际存在的日报**，不要给出范围内一份日报都没有的选项：
+然后用普通助手回复询问用户，并提供基于**实际存在日报**的编号选项：
 
-- 本周（`<本周一>` ~ `<今天>`）
-- 上周（`<上周一>` ~ `<上周日>`）
-- 全部现有日报（`<最早>` ~ `<最晚>`）
+1. 本周（`<本周一>` ~ `<今天>`）
+2. 上周（`<上周一>` ~ `<上周日>`）
+3. 全部现有日报（`<最早>` ~ `<最晚>`）
 
-## 2. 读取
+不要提供范围内一份日报都没有的选项。本轮只提出问题并等待用户选择，下一轮再继续。
 
-逐个 Read 范围内的 `<LOG_DIR>/<YY-MM-DD>.md`。
+## 2. 读取日报
 
-- 缺失的日期直接跳过，不报错、不编造。
-- 范围内一份都没有：告诉用户没有日报并停止，**不要编内容**。
+使用 `read` 逐个读取范围内的 `<LOG_DIR>/<YY-MM-DD>.md`。
 
-## 3. 归并成一份
+- 缺失日期直接跳过，不报错、不编造。
+- 范围内没有任何日报时，告诉用户没有可汇总内容并停止。
+
+## 3. 归并
 
 **本周记录**：
-- 按主题分组；主题名从内容里现提炼，不要套固定分类。
-- 跨天重复或连续推进的同一件事**合并成一条**，写最终结果，不是逐天过程。
-- 只收 `- [x]`。
+
+- 按内容提炼主题，不套用固定分类。
+- 将跨天重复或连续推进的同一事项合并为一条，只写最终结果。
+- 只收集 `- [x]` 条目。
 
 **今后计划**：
-- 汇总所有天的 `- [ ]` 并去重。
-- 若某条在更晚的日报里已完成（出现为 `- [x]`），**剔除**，不列入。
-- 保留 `- [ ]`。
 
-## 4. 输出
+- 汇总所有 `- [ ]` 条目并去重。
+- 如果某条计划在更晚日报中已变为 `- [x]`，将其剔除。
+- 保留未完成项的 `- [ ]` 状态。
 
-**打印到终端。不写文件、不调 Write。**
+## 4. 返回结果
+
+在最终助手回复中直接返回以下 Markdown；不要使用 `write` 或 `edit` 创建周报文件。
 
 ```markdown
-# <起> ~ <止>
+# <起始日期> ~ <结束日期>
 
 ## 本周记录
 
@@ -67,4 +73,4 @@ ls <LOG_DIR>/*.md                                   # 实际存在哪些日报
 - [ ] <待办>
 ```
 
-末尾附一行：实际覆盖了几天（有日报的天数），以及范围内哪几天没有日报。
+末尾注明实际覆盖的日报天数，以及日期范围内缺失了哪些天。
