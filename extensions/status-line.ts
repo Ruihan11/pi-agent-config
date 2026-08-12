@@ -1,5 +1,6 @@
+import { basename, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 interface DiffStats {
 	additions: number;
@@ -8,7 +9,8 @@ interface DiffStats {
 
 const GIT_REFRESH_INTERVAL_MS = 3_000;
 const GIT_TIMEOUT_MS = 2_000;
-const RAINBOW_COLORS = ["error", "warning", "success", "syntaxOperator", "accent", "syntaxKeyword"] as const;
+const CONTEXT_BAR_MAX_WIDTH = 10;
+const CONTEXT_BAR_MIN_WIDTH = 4;
 
 function sanitize(value: string): string {
 	return value
@@ -17,8 +19,53 @@ function sanitize(value: string): string {
 		.trim();
 }
 
-export function formatTokens(tokens: number): string {
-	return tokens >= 1_000 ? `${Math.floor(tokens / 1_000)}k` : `${tokens}`;
+export function getFolderName(cwd: string): string {
+	const absolutePath = resolve(cwd);
+	return sanitize(basename(absolutePath) || absolutePath);
+}
+
+export function getContextProgress(percent: number | null | undefined, width: number) {
+	const normalizedPercent = percent == null || !Number.isFinite(percent) ? null : Math.max(0, Math.min(100, percent));
+	const cells = Math.max(1, Math.floor(width));
+	const filled = normalizedPercent == null ? 0 : Math.round((normalizedPercent / 100) * cells);
+
+	return {
+		filled,
+		empty: cells - filled,
+		label: normalizedPercent == null ? "?%" : `${Math.round(normalizedPercent)}%`,
+		percent: normalizedPercent,
+	};
+}
+
+export function fitLabels(labels: string[], width: number): string[] {
+	if (labels.length === 0) return [];
+
+	const budget = Math.max(labels.length, Math.floor(width));
+	const widths = labels.map((label) => visibleWidth(label));
+	const minimums = widths.map((labelWidth) => Math.min(labelWidth, 3));
+	let total = widths.reduce((sum, labelWidth) => sum + labelWidth, 0);
+
+	while (total > budget) {
+		let candidate = -1;
+		for (let index = 0; index < widths.length; index += 1) {
+			if (widths[index] <= minimums[index]) continue;
+			if (candidate === -1 || widths[index] > widths[candidate]) candidate = index;
+		}
+		if (candidate === -1) break;
+		widths[candidate] -= 1;
+		total -= 1;
+	}
+
+	for (let index = widths.length - 1; total > budget && index >= 0; index = (index - 1 + widths.length) % widths.length) {
+		if (widths[index] <= 1) {
+			if (widths.every((labelWidth) => labelWidth <= 1)) break;
+			continue;
+		}
+		widths[index] -= 1;
+		total -= 1;
+	}
+
+	return labels.map((label, index) => truncateToWidth(label, widths[index], "…"));
 }
 
 export function parseNumstat(output: string): DiffStats {
@@ -103,22 +150,52 @@ export default function (pi: ExtensionAPI) {
 				invalidate() {},
 				render(width: number): string[] {
 					const model = sanitize(ctx.model?.name || ctx.model?.id || "unknown");
-					const branch = footerData.getGitBranch();
+					const folder = getFolderName(ctx.cwd);
+					const branch = sanitize(footerData.getGitBranch() || "no-git");
 					const context = ctx.getContextUsage();
-					const contextWindow = context?.contextWindow ?? ctx.model?.contextWindow ?? 0;
-					const contextTokens = context?.tokens;
-					const contextUsage = `${contextTokens == null ? "?" : formatTokens(contextTokens)}/${formatTokens(contextWindow)}`;
-					const parts = [model];
-
-					if (branch) {
-						parts.push(sanitize(branch), `+${diffStats.additions} -${diffStats.deletions}`);
-					}
-					parts.push(contextUsage);
-
-					const separator = theme.fg("dim", " | ");
-					const line = parts
-						.map((part, index) => theme.fg(RAINBOW_COLORS[index % RAINBOW_COLORS.length], part))
-						.join(separator);
+					const separatorText = width >= 36 ? " · " : "·";
+					const diffText =
+						width >= 36
+							? `+${diffStats.additions} -${diffStats.deletions}`
+							: `+${diffStats.additions}/-${diffStats.deletions}`;
+					const progress = getContextProgress(context?.percent, CONTEXT_BAR_MAX_WIDTH);
+					const separatorWidth = visibleWidth(separatorText) * 4;
+					const fixedWidth = separatorWidth + visibleWidth(diffText) + 1 + visibleWidth(progress.label);
+					const minimumLabelWidth = 3 * 3;
+					const availableWidth = Math.max(0, width - fixedWidth);
+					const barWidth = Math.max(
+						1,
+						Math.min(
+							CONTEXT_BAR_MAX_WIDTH,
+							Math.max(CONTEXT_BAR_MIN_WIDTH, availableWidth - minimumLabelWidth),
+						),
+					);
+					const labels = fitLabels([model, folder, branch], Math.max(3, availableWidth - barWidth));
+					const bar = getContextProgress(context?.percent, barWidth);
+					const contextColor =
+						bar.percent == null
+							? "muted"
+							: bar.percent >= 90
+								? "syntaxVariable"
+								: bar.percent >= 75
+									? "syntaxNumber"
+									: bar.percent >= 50
+										? "syntaxType"
+										: "syntaxOperator";
+					const contextBar =
+						theme.fg(contextColor, "█".repeat(bar.filled)) + theme.fg("borderMuted", "░".repeat(bar.empty));
+					const diff =
+						theme.fg("syntaxString", `+${diffStats.additions}`) +
+						theme.fg("dim", width >= 36 ? " " : "/") +
+						theme.fg("syntaxVariable", `-${diffStats.deletions}`);
+					const parts = [
+						theme.fg("accent", labels[0]),
+						theme.fg("syntaxOperator", labels[1]),
+						theme.fg("syntaxKeyword", labels[2]),
+						diff,
+						`${contextBar} ${theme.fg(contextColor, bar.label)}`,
+					];
+					const line = parts.join(theme.fg("dim", separatorText));
 					return [truncateToWidth(line, width, theme.fg("dim", "…"))];
 				},
 				dispose() {
