@@ -76,6 +76,7 @@ Next:
 
 - Inspect the working tree before editing. Treat existing changes as user-owned.
 - Never overwrite, revert, or reformat unrelated files.
+- **Never commit without explicit user approval.** Present the diff, commit message, and affected files first; wait for confirmation.
 - No branch, commit, amend, rebase, merge, push, or PR unless explicitly asked.
 - Never use `git reset --hard`, force-push, or similar destructive commands unless the user requests that exact action.
 - Review the final diff for accidental changes before handoff.
