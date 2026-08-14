@@ -14,7 +14,7 @@ pi --version
 ### 2. Clone
 
 ```bash
-git clone --recurse-submodules \
+git clone \
   git@github.com:Ruihan11/pi-agent-config.git \
   "$HOME/.pi/agent"
 ```
@@ -66,12 +66,26 @@ pi update --extensions
 
 The package caches under `npm/` and `git/` are machine-local and intentionally ignored by Git. Do not edit or commit them; update the declarations in `settings.json` when changing the package set.
 
+## Skill Categories
+
+Skills are grouped by directory for navigation; Pi still discovers every nested `SKILL.md`, and skill commands use the frontmatter name (for example, `/skill:cuda`).
+
+```text
+skills/
+├── gpu/             cuda (directory: cuda_skill/), ncu-report-skill
+├── tilelang/        writing, debugging, profiling, optimizing, torch-profiling
+├── visualization/   architecture-diagram
+├── workflow/        save-for-the-day, save-for-the-week
+└── KernelWiki/      vendored GPU knowledge snapshot (path retained)
+```
+
+`ncu-report-skill` is vendored at `skills/gpu/ncu-report-skill/`; see its [`UPSTREAM.md`](skills/gpu/ncu-report-skill/UPSTREAM.md) for the pinned source commit and licensing note. `KernelWiki` remains at the top level because it is a larger vendored snapshot with its own layout.
+
 ## Update
 
 ```bash
 cd "$HOME/.pi/agent"
-git pull --recurse-submodules
-git submodule update --init --recursive
+git pull --ff-only
 ```
 
 ## Local State
