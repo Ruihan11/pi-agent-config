@@ -7,7 +7,7 @@
     "anthropic/claude-opus-5",
     "anthropic/claude-fable-5"
   ],
-  "defaultThinkingLevel": "xhigh",
+  "defaultThinkingLevel": "max",
   "hideThinkingBlock": false,
   "theme": "catppuccin-mocha",
   "packages": [

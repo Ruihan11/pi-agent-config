@@ -47,6 +47,25 @@ Pi reads both variables directly. `models.example.json` is an optional safe temp
 cp "$HOME/.pi/agent/models.example.json" "$HOME/.pi/agent/models.json"
 ```
 
+## Pi Packages
+
+The configured Pi packages are declared in [`settings.json`](settings.json) and are loaded for both OpenAI and Anthropic models:
+
+| Package | Purpose |
+|---|---|
+| `npm:pi-terminal-math` | Render LaTeX equations as terminal-native text |
+| `npm:@plannotator/pi-extension` | Review plans, annotate messages, and review code changes |
+
+On a fresh checkout, Pi installs missing packages from these declarations. To inspect or refresh them:
+
+```bash
+cd "$HOME/.pi/agent"
+pi list
+pi update --extensions
+```
+
+The package caches under `npm/` and `git/` are machine-local and intentionally ignored by Git. Do not edit or commit them; update the declarations in `settings.json` when changing the package set.
+
 ## Update
 
 ```bash
